@@ -119,30 +119,27 @@ exec > >(tee -a "$SMAP_LOG") 2>&1
 # Ensures no leftover files stay if you CTRL+C or when the script crashes.
 cleanup() {
   echo "Cleaning up temporary files..."
-  rm -rf "$HOME"/smap_bench_*
+  rm -rf /tmp/smap_bench_*
 }
 trap 'echo "Interrupted!"; cleanup; exit 1' INT TERM
 trap cleanup EXIT
 
 # Build the flags used by the command
 FINAL_SMAP_FLAGS="$SMAP_FLAGS -p $CORES"
+FIRST_RUN=true
 
 echo "Configured Data dir: $DATA_DIR"
 echo "Configured Ref dir: $REF_DIR"
 echo "Executing SMAP with: $FINAL_SMAP_FLAGS"
-
-# Tracking variable to handle the CSV header
-FIRST_RUN=true
-
 echo "STARTING SMAP BENCHMARKS"
 
 # Loop over all files in the smap data folder that could be test data.
-for SOURCE_ZIP in "$HOME/smap_data"/*.tar.gz; do
+for SOURCE_ZIP in "$DATA_DIR"/*.tar.gz; do
     [ -e "$SOURCE_ZIP" ] || continue # Handle empty directory
     DATASET_ID=$(basename "$SOURCE_ZIP" .tar.gz)
 
-    if [[ " ${SKIP_LIST[@]} " =~ " ${DATASET_ID} " ]]; then
-        echo "SKIPPING $DATASET_ID: Marked as 'Heavy' (Run on HPC only)"
+    if [[ " ${SKIP_LIST[*]} " =~ ${DATASET_ID} ]]; then
+        echo "SKIPPING $DATASET_ID!"
         continue
     fi
     
@@ -153,10 +150,10 @@ for SOURCE_ZIP in "$HOME/smap_data"/*.tar.gz; do
     echo "Extracting Data..."
 
     # Extraction and discovery.
-    SCRATCH_DIR=$(mktemp -d -p "$HOME" -t "smap_bench_XXXX")
+    SCRATCH_DIR=$(mktemp -d -t "smap_bench_XXXX")
     tar --warning=no-unknown-keyword -zxf "$SOURCE_ZIP" -C "$SCRATCH_DIR"
 
-    echo "Extracting Finished!"
+    echo "Extraction Finished!"
 
     # Sanitization.
     find "$SCRATCH_DIR" -name "._*" -delete
