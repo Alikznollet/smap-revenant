@@ -160,7 +160,7 @@ FIRST_RUN=true
 
 echo "Configured Data dir: $DATA_DIR"
 echo "Configured Ref dir: $REF_DIR"
-echo "Benchmark config:    Runs: $RUNS | Warmups: $WARMUP"
+echo "Benchmark config: Runs: $RUNS | Warmups: $WARMUP"
 echo "Datasets to skip: ${SKIP_LIST[*]:-None}"
 echo "Executing SMAP with: $FINAL_SMAP_FLAGS"
 
@@ -233,7 +233,7 @@ for SOURCE_ZIP in "$DATA_DIR"/*.tar.gz; do
       --prepare "sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'" \
       --command-name "$DATASET_ID" \
       --export-csv "$TEMP_CSV" \
-      "$TIME_CMD -a -f '%M' -o $MEM_LOG smap haplotype-window \"$GENOME\" \"$BORDERS\" \"$BAM_DIR\" \"$FASTQ_DIR\" -o \"$OUT_DIR/$DATASET_ID\" $FINAL_SMAP_FLAGS" >> "$SMAP_LOG"
+      "$TIME_CMD -a -f '%M' -o $MEM_LOG smap haplotype-window \"$GENOME\" \"$BORDERS\" \"$BAM_DIR\" \"$FASTQ_DIR\" -o \"$OUT_DIR/$DATASET_ID\" $FINAL_SMAP_FLAGS" >> "$SMAP_LOG" 2>&1
 
     # Calculate RAM values.
     AVG_RAM=$(awk '{ sum += $1; n++ } END { if (n > 0) printf "%.0f", sum / n; }' "$MEM_LOG")
