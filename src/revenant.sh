@@ -149,7 +149,7 @@ for SOURCE_ZIP in "$DATA_DIR"/*.tar.gz; do
 
     echo "Extracting Data..."
 
-    # Extraction and discovery.
+    # Extraction
     SCRATCH_DIR=$(mktemp -d -t "smap_bench_XXXX")
     tar --warning=no-unknown-keyword -zxf "$SOURCE_ZIP" -C "$SCRATCH_DIR"
 
@@ -160,51 +160,62 @@ for SOURCE_ZIP in "$DATA_DIR"/*.tar.gz; do
     find "$SCRATCH_DIR" -name ".DS_Store" -delete
     rm -rf "$SCRATCH_DIR/__MACOSX"
 
+    # Discovery
+
+    GENOME=$(find "$SCRATCH_DIR" -not -name ".*" \( -name "*.fasta" -o -name "*.fa" \) | head -n 1)
+
+    # If we lack a genome then it's invalid
+    if [ -z "$GENOME" ]; then
+        echo "Error: no .fasta or .fa reference genome found for $DATASET_ID. Skipping..." >&2
+        continue
+    fi
+
     # Set inputs up.
-    BASE_DATA_DIR=$(find "$SCRATCH_DIR" -maxdepth 1 -type d -not -path "$SCRATCH_DIR" -not -name ".*" | head -n 1)
-    GENOME=$(find "$BASE_DATA_DIR" -not -name ".*" \( -name "*.fasta" -o -name "*.fa" \) | head -n 1)
+    BASE_DATA_DIR=$(dirnam "$GENOME")
     BORDERS=$(find "$BASE_DATA_DIR" -not -name ".*" \( -name "*.gff" -o -name "*.bed" \) | head -n 1)
-    BAM_DIR=$(find "$BASE_DATA_DIR" -not -name ".*" -type d -exec sh -c 'ls -1 "{}"/*.bam >/dev/null 2>&1' \; -print | head -n 1)
-    FASTQ_DIR=$(find "$BASE_DATA_DIR" -not -name ".*" -type d -exec sh -c 'ls -1 "{}"/*.fq* >/dev/null 2>&1' \; -print | head -n 1)
+
+    FIRST_BAM=$(find "$BASE_DATA_DIR" -not -name ".*" -name "*.bam" | head -n 1)
+    FIRST_FASTQ=$(find "$BASE_DATA_DIR" -not -name ".*" \( -name "*.fq*" -o -name "*.fastq*" \) | head -n 1)
+
+    BAM_DIR=${FIRST_BAM:+$(dirname "$FIRST_BAM")}
+    FASTQ_DIR=${FIRST_FASTQ:+$(dirname "$FIRST_FASTQ")}
+
     OUT_DIR="$SCRATCH_DIR/output"
     mkdir -p "$OUT_DIR"
-
-    # Clear caches
-    sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'
 
     # Create Temp CSV and log for this run.
     TEMP_CSV="${SCRATCH_DIR}/run_results.csv"
     MEM_LOG="${SCRATCH_DIR}/ram_usage.log"
 
     # Write a header per file to the log file.
-    echo -e "\n========================================" >> "$SMAP_LOG"
-    echo "SMAP LOGS FOR: $DATASET_ID" >> "$SMAP_LOG"
-    echo "========================================" >> "$SMAP_LOG"
+    echo -e "\n========================================"
+    echo "SMAP LOGS FOR: $DATASET_ID"
+    echo "========================================"
     
     # Run HyperFine.
     hyperfine --warmup 0 --runs 1 --show-output \
       --prepare "sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'" \
       --command-name "$DATASET_ID" \
       --export-csv "$TEMP_CSV" \
-      "/usr/bin/time -a -f '%M' -o $MEM_LOG smap haplotype-window \"$GENOME\" \"$BORDERS\" \"$BAM_DIR\" \"$FASTQ_DIR\" -o \"$OUT_DIR/$DATASET_ID\" $SMAP_FLAGS 2>> \"$SMAP_LOG\""
+      "$TIME_CMD -a -f '%M' -o $MEM_LOG smap haplotype-window \"$GENOME\" \"$BORDERS\" \"$BAM_DIR\" \"$FASTQ_DIR\" -o \"$OUT_DIR/$DATASET_ID\" $FINAL_SMAP_FLAGS"
 
     # Calculate RAM values.
     AVG_RAM=$(awk '{ sum += $1; n++ } END { if (n > 0) printf "%.0f", sum / n; }' "$MEM_LOG")
     MAX_RAM=$(sort -rn "$MEM_LOG" | head -n 1)
 
-    REF_DIR="$HOME/Projects/project-smap-Alikznollet-1/reference_data/$DATASET_ID"
-    mkdir -p "$REF_DIR"
+    CURRENT_REF_DIR="$REF_DIR/$DATASET_ID"
+    mkdir -p "$CURRENT_REF_DIR"
 
     # Either update references or verify existing ones.
     if [ "$UPDATE_REFS" = true ]; then
         echo "UPDATING REFERENCES for $DATASET_ID..."
-        cp "$OUT_DIR"/*.tsv "$REF_DIR/"
+        cp "$OUT_DIR"/*.tsv "$CURRENT_REF_DIR/"
     else
         echo "VERIFYING OUTPUTS for $DATASET_ID..."
         FAILED_VERIFICATION=false
         
         # Check every file currently in your reference folder
-        for REF_FILE in "$REF_DIR"/*.tsv; do
+        for REF_FILE in "$CURRENT_REF_DIR"/*.tsv; do
             [ -e "$REF_FILE" ] || continue
             FILENAME=$(basename "$REF_FILE")
             NEW_FILE="$OUT_DIR/$FILENAME"
@@ -221,11 +232,7 @@ for SOURCE_ZIP in "$DATA_DIR"/*.tar.gz; do
                 echo "[MATCH]: $FILENAME"
             else
                 echo "[DIFF]: $FILENAME differs from reference! (Check log for details)"
-                
-                # Write the actual differences to your global log file
-                echo -e "\n--- DIFF DETECTED IN $FILENAME ---" >> "$SMAP_LOG"
-                diff -u <(grep -v "^#" "$REF_FILE" | sort) <(grep -v "^#" "$NEW_FILE" | sort) >> "$SMAP_LOG"
-                
+                diff -u <(grep -v "^#" "$REF_FILE" | sort) <(grep -v "^#" "$NEW_FILE" | sort)
                 FAILED_VERIFICATION=true
             fi
         done
@@ -249,9 +256,10 @@ for SOURCE_ZIP in "$DATA_DIR"/*.tar.gz; do
     echo "${DATA_ROW},${AVG_RAM},${MAX_RAM}" >> "$MASTER_CSV"
 
     # Cleanup dataset from scratch to save disk space.
-    rm -rf "$SCRATCH_DIR"
+    rm -rf "${SCRATCH_DIR:?}/${DATASET_ID:?}"
     echo "Finished Benchmark for $DATASET_ID."
     sleep 10s # Sleep for a sec so the OS can clear memory.
 done
 
-echo "Combined CSV results saved to: $MASTER_CSV"
+echo "Finished all Benchmarks!"
+echo "CSV results saved to: $MASTER_CSV"
