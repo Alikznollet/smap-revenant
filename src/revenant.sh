@@ -9,6 +9,10 @@ CORES=4
 DATA_DIR="$PWD/smap_data"
 REF_DIR="$PWD/reference_data"
 
+# The default benchmark setup.
+RUNS=5
+WARMUP=1
+
 # These are standardized flags but can be overwritten with --smap-args
 SMAP_FLAGS="-f 5 -c 30 -e dosage -i diploid -z 2"
 
@@ -44,6 +48,14 @@ while [[ "$#" -gt 0 ]]; do
             SMAP_FLAGS="$2"
             shift 2
             ;;
+        --runs)
+            RUNS="$2"
+            shift 2
+            ;;
+        --warmup)
+            WARMUP="$2"
+            shift 2
+            ;;
         -h|--help)
             echo "Usage: revenant [OPTIONS]"
             echo ""
@@ -52,6 +64,9 @@ while [[ "$#" -gt 0 ]]; do
             echo "  -c, --cores <int>    Number of CPU cores to use (default: 4)."
             echo "  -d, --data-dir <dir> Path to input datasets tar.gz files (default: ./smap_data)."
             echo "  -r, --ref-dir <dir>  Path to reference data for verification (default: ./reference_data)."
+            echo "  -s, --skip <dataset> Name of a dataset to skip, this argument can be passed mutliple times."
+            echo "  --runs <int>         The amount of runs to benchmark and take averages from (default: 5)."
+            echo "  --warmup <int>       The amount of warmup runs to do before benchmarking begins (default: 1)."
             echo "  --smap-args <str>    Override core SMAP algorithmic flags."
             exit 0
             ;;
@@ -128,14 +143,27 @@ cleanup() {
 trap 'echo "Interrupted!"; cleanup; exit 1' INT TERM
 trap cleanup EXIT
 
+# Force the RUNS and WARMUP variables if updating references.
+if [ "$UPDATE_REFS" = true ]; then
+    # If the user explicitly passed custom runs/warmups but is updating references,
+    # silently clamp them to baseline defaults to prevent wasted compute.
+    if [ "$RUNS" -ne 1 ] || [ "$WARMUP" -ne 0 ]; then
+        echo "[Notice]: Update flag (-u) detected. Forcing runs=1 and warmup=0 to generate clean baselines."
+    fi
+    RUNS=1
+    WARMUP=0
+fi
+
 # Build the flags used by the command
 FINAL_SMAP_FLAGS="$SMAP_FLAGS -p $CORES"
 FIRST_RUN=true
 
 echo "Configured Data dir: $DATA_DIR"
 echo "Configured Ref dir: $REF_DIR"
+echo "Benchmark config:    Runs: $RUNS | Warmups: $WARMUP"
 echo "Datasets to skip: ${SKIP_LIST[*]:-None}"
 echo "Executing SMAP with: $FINAL_SMAP_FLAGS"
+
 echo "STARTING SMAP BENCHMARKS"
 
 # Loop over all files in the smap data folder that could be test data.
@@ -165,18 +193,17 @@ for SOURCE_ZIP in "$DATA_DIR"/*.tar.gz; do
 
     # Extraction
     SCRATCH_DIR=$(mktemp -d -t "smap_bench_XXXX")
-    tar --warning=no-unknown-keyword -zxf "$SOURCE_ZIP" -C "$SCRATCH_DIR"
+    tar --warning=no-unknown-keyword \
+        --exclude='__MACOSX' \
+        --exclude='._*' \
+        --exclude='.DS_Store' \
+        -zxf "$SOURCE_ZIP" -C "$SCRATCH_DIR"
 
     echo "Extraction Finished!"
 
-    # Sanitization.
-    find "$SCRATCH_DIR" -name "._*" -delete
-    find "$SCRATCH_DIR" -name ".DS_Store" -delete
-    rm -rf "$SCRATCH_DIR/__MACOSX"
-
     # Discovery
 
-    GENOME=$(find "$SCRATCH_DIR" -not -name ".*" \( -name "*.fasta" -o -name "*.fa" \) | head -n 1)
+    GENOME=$(find "$SCRATCH_DIR" -type f -not -name ".*" -not -name "._*" \( -name "*.fasta" -o -name "*.fa" \) | sort | head -n 1)
 
     # If we lack a genome then it's invalid
     if [ -z "$GENOME" ]; then
@@ -185,11 +212,11 @@ for SOURCE_ZIP in "$DATA_DIR"/*.tar.gz; do
     fi
 
     # Set inputs up.
-    BASE_DATA_DIR=$(dirnam "$GENOME")
-    BORDERS=$(find "$BASE_DATA_DIR" -not -name ".*" \( -name "*.gff" -o -name "*.bed" \) | head -n 1)
+    BASE_DATA_DIR=$(dirname "$GENOME")
+    BORDERS=$(find "$BASE_DATA_DIR" -not -name ".*" \( -name "*.gff" -o -name "*.bed" \) | head -n 1 | sort)
 
-    FIRST_BAM=$(find "$BASE_DATA_DIR" -not -name ".*" -name "*.bam" | head -n 1)
-    FIRST_FASTQ=$(find "$BASE_DATA_DIR" -not -name ".*" \( -name "*.fq*" -o -name "*.fastq*" \) | head -n 1)
+    FIRST_BAM=$(find "$BASE_DATA_DIR" -not -name ".*" -name "*.bam" | head -n 1 | sort)
+    FIRST_FASTQ=$(find "$BASE_DATA_DIR" -not -name ".*" \( -name "*.fq*" -o -name "*.fastq*" \) | head -n 1 | sort)
 
     BAM_DIR=${FIRST_BAM:+$(dirname "$FIRST_BAM")}
     FASTQ_DIR=${FIRST_FASTQ:+$(dirname "$FIRST_FASTQ")}
@@ -200,18 +227,13 @@ for SOURCE_ZIP in "$DATA_DIR"/*.tar.gz; do
     # Create Temp CSV and log for this run.
     TEMP_CSV="${SCRATCH_DIR}/run_results.csv"
     MEM_LOG="${SCRATCH_DIR}/ram_usage.log"
-
-    # Write a header per file to the log file.
-    echo -e "\n========================================"
-    echo "SMAP LOGS FOR: $DATASET_ID"
-    echo "========================================"
     
     # Run HyperFine.
-    hyperfine --warmup 0 --runs 1 --show-output \
+    hyperfine --warmup "$WARMUP" --runs "$RUNS" --show-output \
       --prepare "sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'" \
       --command-name "$DATASET_ID" \
       --export-csv "$TEMP_CSV" \
-      "$TIME_CMD -a -f '%M' -o $MEM_LOG smap haplotype-window \"$GENOME\" \"$BORDERS\" \"$BAM_DIR\" \"$FASTQ_DIR\" -o \"$OUT_DIR/$DATASET_ID\" $FINAL_SMAP_FLAGS"
+      "$TIME_CMD -a -f '%M' -o $MEM_LOG smap haplotype-window \"$GENOME\" \"$BORDERS\" \"$BAM_DIR\" \"$FASTQ_DIR\" -o \"$OUT_DIR/$DATASET_ID\" $FINAL_SMAP_FLAGS" >> "$SMAP_LOG"
 
     # Calculate RAM values.
     AVG_RAM=$(awk '{ sum += $1; n++ } END { if (n > 0) printf "%.0f", sum / n; }' "$MEM_LOG")
@@ -246,7 +268,7 @@ for SOURCE_ZIP in "$DATA_DIR"/*.tar.gz; do
                 echo "[MATCH]: $FILENAME"
             else
                 echo "[DIFF]: $FILENAME differs from reference! (Check log for details)"
-                diff -u <(grep -v "^#" "$REF_FILE" | sort) <(grep -v "^#" "$NEW_FILE" | sort)
+                diff -u <(grep -v "^#" "$REF_FILE" | sort) <(grep -v "^#" "$NEW_FILE" | sort) >> "$SMAP_LOG"
                 FAILED_VERIFICATION=true
             fi
         done
@@ -270,7 +292,7 @@ for SOURCE_ZIP in "$DATA_DIR"/*.tar.gz; do
     echo "${DATA_ROW},${AVG_RAM},${MAX_RAM}" >> "$MASTER_CSV"
 
     # Cleanup dataset from scratch to save disk space.
-    rm -rf "${SCRATCH_DIR:?}/${DATASET_ID:?}"
+    rm -rf "${SCRATCH_DIR:?}"
     echo "Finished Benchmark for $DATASET_ID."
     sleep 10s # Sleep for a sec so the OS can clear memory.
 done
