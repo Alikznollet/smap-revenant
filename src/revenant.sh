@@ -154,6 +154,17 @@ if [ "$UPDATE_REFS" = true ]; then
     WARMUP=0
 fi
 
+# Check if there are any files.
+shopt -s nullglob
+FILES=("$DATA_DIR"/*.tar.gz)
+shopt -u nullglob
+
+if [ ${#FILES[@]} -eq 0 ]; then
+    echo "Error: No dataset archives (.tar.gz) found in: $DATA_DIR" >&2
+    echo "Please check your --data-dir path or add files to the folder." >&2
+    exit 1
+fi
+
 # Build the flags used by the command
 FINAL_SMAP_FLAGS="$SMAP_FLAGS -p $CORES"
 FIRST_RUN=true
@@ -167,7 +178,7 @@ echo "Executing SMAP with: $FINAL_SMAP_FLAGS"
 echo "STARTING SMAP BENCHMARKS"
 
 # Loop over all files in the smap data folder that could be test data.
-for SOURCE_ZIP in "$DATA_DIR"/*.tar.gz; do
+for SOURCE_ZIP in "${FILES[@]}"; do
     [ -e "$SOURCE_ZIP" ] || continue # Handle empty directory
     DATASET_ID=$(basename "$SOURCE_ZIP" .tar.gz)
 
