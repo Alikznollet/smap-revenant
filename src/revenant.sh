@@ -12,6 +12,9 @@ REF_DIR="$PWD/reference_data"
 # These are standardized flags but can be overwritten with --smap-args
 SMAP_FLAGS="-f 5 -c 30 -e dosage -i diploid -z 2"
 
+# Defines what files to skip for the run.
+SKIP_LIST=("testset2")
+
 # PARSING ARGUMENTS
 
 while [[ "$#" -gt 0 ]]; do
@@ -57,7 +60,7 @@ done
 
 # DEPENDENCY CHECK
 
-for cmd in awk hyperfine smap; do
+for cmd in awk hyperfine; do
     if ! command -v "$cmd" &> /dev/null; then
         echo "Error: Required command '$cmd' is not installed or not in PATH." >&2
         echo "Install via your local package manager!" >&2
@@ -65,9 +68,13 @@ for cmd in awk hyperfine smap; do
     fi
 done
 
-TIME_CMD="/usr/bin/time"
-if [ ! -x "$TIME_CMD" ]; then
-    echo "Error: GNU time utility not found at $TIME_CMD." >&2
+TIME_CMD=$(type -P gtime || type -P time)
+
+# Check if we found a path, and if it supports GNU flags
+if [ -z "$TIME_CMD" ] || ! "$TIME_CMD" -o /dev/null true &>/dev/null; then
+    echo "Error: GNU 'time' utility not found or doesn't support required flags." >&2
+    echo "Linux: Install 'time' (e.g., sudo dnf install time)" >&2
+    echo "macOS: Install 'gnu-time' (e.g., brew install gnu-time)" >&2
     exit 1
 fi
 
@@ -95,7 +102,7 @@ fi
 
 echo "Venv successfully engaged: $VIRTUAL_ENV"
 
-# Setup the paths. Also make sure they exist.
+# Setup the benchmark and logs dir. Also make sure they exist.
 BENCHMARK_DIR="$PWD/benchmark"
 LOG_DIR="$BENCHMARK_DIR/logs"
 mkdir -p "$BENCHMARK_DIR"
@@ -106,14 +113,8 @@ TIMESTAMP=$(date +%Y%m%d_%H%M)
 MASTER_CSV="$BENCHMARK_DIR/revenant_benchmark_${TIMESTAMP}.csv"
 SMAP_LOG="$LOG_DIR/benchmark_benchmark_${TIMESTAMP}.log"
 
-# Specific SMAP flags
-# * NOTE: We don't include "--plot all" because this could take a while and we are
-# * not optimizing that part of the project.
-# * We use 4 cores for benchmarking.
-SMAP_FLAGS="-f 5 -c 30 -e dosage -i diploid -z 2 -p $CORES"
-
-# Defines what files to skip for the run.
-SKIP_LIST=("testset2")
+# Log setup to ensure important metadata is included in LOG
+exec > >(tee -a "$SMAP_LOG") 2>&1
 
 # Ensures no leftover files stay if you CTRL+C or when the script crashes.
 cleanup() {
@@ -123,18 +124,15 @@ cleanup() {
 trap 'echo "Interrupted!"; cleanup; exit 1' INT TERM
 trap cleanup EXIT
 
+# Build the flags used by the command
+FINAL_SMAP_FLAGS="$SMAP_FLAGS -p $CORES"
+
+echo "Configured Data dir: $DATA_DIR"
+echo "Configured Ref dir: $REF_DIR"
+echo "Executing SMAP with: $FINAL_SMAP_FLAGS"
+
 # Tracking variable to handle the CSV header
 FIRST_RUN=true
-
-# Check dependencies.
-if ! command -v awk &> /dev/null; then
-    echo "Awk not found. Installing gawk..."
-    sudo dnf5 install -y gawk
-fi
-if ! [ -x "/usr/bin/time" ]; then
-    echo "Installing GNU time..."
-    sudo dnf5 install -y time
-fi
 
 echo "STARTING SMAP BENCHMARKS"
 
