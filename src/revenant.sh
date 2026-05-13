@@ -64,7 +64,7 @@ while [[ "$#" -gt 0 ]]; do
             echo "  -c, --cores <int>    Number of CPU cores to use (default: 4)."
             echo "  -d, --data-dir <dir> Path to input datasets tar.gz files (default: ./smap_data)."
             echo "  -r, --ref-dir <dir>  Path to reference data for verification (default: ./reference_data)."
-            echo "  -s, --skip <dataset> Name of a dataset to skip, this argument can be passed mutliple times."
+            echo "  -s, --skip <name>    Name of a dataset to skip, this argument can be passed mutliple times."
             echo "  --runs <int>         The amount of runs to benchmark and take averages from (default: 5)."
             echo "  --warmup <int>       The amount of warmup runs to do before benchmarking begins (default: 1)."
             echo "  --smap-args <str>    Override core SMAP algorithmic flags."
