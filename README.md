@@ -1,7 +1,7 @@
 > [!WARNING]
 > When using this in your Computational Biology 2526 Project, please reference this repository. As per the request of the professor and assistant.
 
-# smap-revenant
+# Revenant
 
 A benchmarking harness for the Smap Haplotype package. Made for the Computational Biology course at Ghent University.
 
