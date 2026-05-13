@@ -12,22 +12,88 @@ REF_DIR="$PWD/reference_data"
 # These are standardized flags but can be overwritten with --smap-args
 SMAP_FLAGS="-f 5 -c 30 -e dosage -i diploid -z 2"
 
-# Parse arguments
-# u: If passed reference data will be updated.
-while getopts "uc:h" opt; do
-    case $opt in 
-        u)  UPDATE_REFS=true ;;
-        c)  CORES="$OPTARG" ;;
-        h) 
-            echo "Usage: revenant [-u]"
+# PARSING ARGUMENTS
+
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -u|--update)
+            UPDATE_REFS=true
+            shift 1
+            ;;
+        -c|--cores)
+            CORES="$2"
+            shift 2
+            ;;
+        -d|--data-dir)
+            DATA_DIR="$2"
+            shift 2
+            ;;
+        -r|--ref-dir)
+            REF_DIR="$2"
+            shift 2
+            ;;
+        --smap-args)
+            # This overwrites the default algorithmic flags.
+            SMAP_FLAGS="$2"
+            shift 2
+            ;;
+        -h|--help)
+            echo "Usage: revenant [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  -u, --update         Overwrite reference files with current results."
+            echo "  -c, --cores <int>    Number of CPU cores to use (default: 4)."
+            echo "  -d, --data-dir <dir> Path to input datasets tar.gz files (default: ./smap_data)."
+            echo "  -r, --ref-dir <dir>  Path to reference data for verification (default: ./reference_data)."
+            echo "  --smap-args <str>    Override core SMAP algorithmic flags."
             exit 0
             ;;
-        \?)
-            echo "Invalid option: -$OPTARG" >&2
+        *)
+            echo "Unknown option: $1" >&2
             exit 1
             ;;
     esac
 done
+
+# DEPENDENCY CHECK
+
+for cmd in awk hyperfine smap; do
+    if ! command -v "$cmd" &> /dev/null; then
+        echo "Error: Required command '$cmd' is not installed or not in PATH." >&2
+        echo "Install via your local package manager!" >&2
+        exit 1
+    fi
+done
+
+TIME_CMD="/usr/bin/time"
+if [ ! -x "$TIME_CMD" ]; then
+    echo "Error: GNU time utility not found at $TIME_CMD." >&2
+    exit 1
+fi
+
+# CHECK VENV SETUP
+
+VENV_ACTIVATE="$PWD/.venv/bin/activate"
+
+# Check whether the venv exists
+if [ ! -f "$VENV_ACTIVATE" ]; then
+    echo "Error: Virtual environment activation script missing at $VENV_ACTIVATE" >&2
+    echo "Is the venv initialized?"
+    exit 1
+fi
+
+# Source the venv and if it fails immediately exit.
+set +u
+# shellcheck source=/dev/null
+source "$VENV_ACTIVATE" || { echo "Failed to activate venv." >&2; exit 1; }
+set -u
+
+if [ -z "${VIRTUAL_ENV:-}" ]; then
+    echo "Error: venv failed to engage properly." >&2
+    exit 1
+fi
+
+echo "Venv successfully engaged: $VIRTUAL_ENV"
 
 # Setup the paths. Also make sure they exist.
 BENCHMARK_DIR="$PWD/benchmark"
