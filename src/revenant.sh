@@ -213,10 +213,10 @@ for SOURCE_ZIP in "$DATA_DIR"/*.tar.gz; do
 
     # Set inputs up.
     BASE_DATA_DIR=$(dirname "$GENOME")
-    BORDERS=$(find "$BASE_DATA_DIR" -not -name ".*" \( -name "*.gff" -o -name "*.bed" \) | head -n 1 | sort)
+    BORDERS=$(find "$BASE_DATA_DIR" -not -name ".*" \( -name "*.gff" -o -name "*.bed" \) | sort | head -n 1)
 
-    FIRST_BAM=$(find "$BASE_DATA_DIR" -not -name ".*" -name "*.bam" | head -n 1 | sort)
-    FIRST_FASTQ=$(find "$BASE_DATA_DIR" -not -name ".*" \( -name "*.fq*" -o -name "*.fastq*" \) | head -n 1 | sort)
+    FIRST_BAM=$(find "$BASE_DATA_DIR" -not -name ".*" -name "*.bam" | sort | head -n 1)
+    FIRST_FASTQ=$(find "$BASE_DATA_DIR" -not -name ".*" \( -name "*.fq*" -o -name "*.fastq*" \) | sort | head -n 1)
 
     BAM_DIR=${FIRST_BAM:+$(dirname "$FIRST_BAM")}
     FASTQ_DIR=${FIRST_FASTQ:+$(dirname "$FIRST_FASTQ")}
@@ -229,11 +229,11 @@ for SOURCE_ZIP in "$DATA_DIR"/*.tar.gz; do
     MEM_LOG="${SCRATCH_DIR}/ram_usage.log"
     
     # Run HyperFine.
-    hyperfine --warmup "$WARMUP" --runs "$RUNS" --show-output \
+    hyperfine --warmup "$WARMUP" --runs "$RUNS" \
       --prepare "sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'" \
       --command-name "$DATASET_ID" \
       --export-csv "$TEMP_CSV" \
-      "$TIME_CMD -a -f '%M' -o $MEM_LOG smap haplotype-window \"$GENOME\" \"$BORDERS\" \"$BAM_DIR\" \"$FASTQ_DIR\" -o \"$OUT_DIR/$DATASET_ID\" $FINAL_SMAP_FLAGS" >> "$SMAP_LOG" 2>&1
+      "$TIME_CMD -a -f '%M' -o $MEM_LOG smap haplotype-window \"$GENOME\" \"$BORDERS\" \"$BAM_DIR\" \"$FASTQ_DIR\" -o \"$OUT_DIR/$DATASET_ID\" $FINAL_SMAP_FLAGS >> \"$SMAP_LOG\" 2>&1"
 
     # Calculate RAM values.
     AVG_RAM=$(awk '{ sum += $1; n++ } END { if (n > 0) printf "%.0f", sum / n; }' "$MEM_LOG")
@@ -268,7 +268,7 @@ for SOURCE_ZIP in "$DATA_DIR"/*.tar.gz; do
                 echo "[MATCH]: $FILENAME"
             else
                 echo "[DIFF]: $FILENAME differs from reference! (Check log for details)"
-                diff -u <(grep -v "^#" "$REF_FILE" | sort) <(grep -v "^#" "$NEW_FILE" | sort) >> "$SMAP_LOG"
+                diff -u <(grep -v "^#" "$REF_FILE" | sort) <(grep -v "^#" "$NEW_FILE" | sort) >> "$SMAP_LOG" 2>&1
                 FAILED_VERIFICATION=true
             fi
         done
