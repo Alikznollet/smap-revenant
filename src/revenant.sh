@@ -154,7 +154,12 @@ if [ "$UPDATE_REFS" = true ]; then
     WARMUP=0
 fi
 
-# Check if there are any files.
+# Check if the data is there.
+if [ ! -d "$DATA_DIR" ]; then
+    echo "Error: Directory does not exist: $DATA_DIR" >&2
+    exit 1
+fi
+
 shopt -s nullglob
 FILES=("$DATA_DIR"/*.tar.gz)
 shopt -u nullglob
