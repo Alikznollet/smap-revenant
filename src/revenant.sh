@@ -13,7 +13,7 @@ REF_DIR="$PWD/reference_data"
 SMAP_FLAGS="-f 5 -c 30 -e dosage -i diploid -z 2"
 
 # Defines what files to skip for the run.
-SKIP_LIST=("testset2")
+SKIP_LIST=()
 
 # PARSING ARGUMENTS
 
@@ -33,6 +33,10 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         -r|--ref-dir)
             REF_DIR="$2"
+            shift 2
+            ;;
+        -s|--skip)
+            SKIP_LIST+=("$2")
             shift 2
             ;;
         --smap-args)
@@ -130,6 +134,7 @@ FIRST_RUN=true
 
 echo "Configured Data dir: $DATA_DIR"
 echo "Configured Ref dir: $REF_DIR"
+echo "Datasets to skip: ${SKIP_LIST[*]:-None}"
 echo "Executing SMAP with: $FINAL_SMAP_FLAGS"
 echo "STARTING SMAP BENCHMARKS"
 
@@ -138,8 +143,17 @@ for SOURCE_ZIP in "$DATA_DIR"/*.tar.gz; do
     [ -e "$SOURCE_ZIP" ] || continue # Handle empty directory
     DATASET_ID=$(basename "$SOURCE_ZIP" .tar.gz)
 
-    if [[ " ${SKIP_LIST[*]} " =~ ${DATASET_ID} ]]; then
-        echo "SKIPPING $DATASET_ID!"
+    # Skip the dataset if the user asked for it.
+    SKIP_DATASET=false
+    for skip_item in "${SKIP_LIST[@]}"; do
+        if [[ "$skip_item" == "$DATASET_ID" ]]; then
+            SKIP_DATASET=true
+            break
+        fi
+    done
+
+    if [[ "$SKIP_DATASET" == true ]]; then
+        echo "SKIPPING $DATASET_ID: Requested via command line."
         continue
     fi
     
