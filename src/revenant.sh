@@ -130,7 +130,7 @@ mkdir -p "$LOG_DIR"
 # Set up the output and log files.
 TIMESTAMP=$(date +%Y%m%d_%H%M)
 MASTER_CSV="$BENCHMARK_DIR/revenant_benchmark_${TIMESTAMP}.csv"
-SMAP_LOG="$LOG_DIR/benchmark_benchmark_${TIMESTAMP}.log"
+SMAP_LOG="$LOG_DIR/revenant_benchmark_${TIMESTAMP}.log"
 
 # Log setup to ensure important metadata is included in LOG
 exec > >(tee -a "$SMAP_LOG") 2>&1
