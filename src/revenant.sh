@@ -246,7 +246,7 @@ for SOURCE_ZIP in "${FILES[@]}"; do
     
     # Run HyperFine.
     hyperfine --warmup "$WARMUP" --runs "$RUNS" \
-      --prepare "sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'" \
+      --prepare "sync" \
       --command-name "$DATASET_ID" \
       --export-csv "$TEMP_CSV" \
       "$TIME_CMD -a -f '%M' -o $MEM_LOG smap haplotype-window \"$GENOME\" \"$BORDERS\" \"$BAM_DIR\" \"$FASTQ_DIR\" -o \"$OUT_DIR/$DATASET_ID\" $FINAL_SMAP_FLAGS >> \"$SMAP_LOG\" 2>&1"
